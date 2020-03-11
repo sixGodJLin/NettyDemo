@@ -25,12 +25,30 @@ public class NettyClientHandler extends SimpleChannelInboundHandler<String> {
         this.heartBeatData = heartBeatData;
     }
 
+    /**
+     * 连接成功触发channelActive
+     */
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        Log.d(TAG, "channelActive: 连接成功");
+    }
+
+    /**
+     * 断开连接触发channelInactive
+     */
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         super.channelInactive(ctx);
         Log.e(TAG, "channelInactive: 断开连接");
     }
 
+    /**
+     * 利用写空闲发送心跳检测消息
+     *
+     * @param ctx ChannelHandlerContext
+     * @param evt evt
+     * @throws Exception e
+     */
     @Override
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
         super.userEventTriggered(ctx, evt);
@@ -53,12 +71,20 @@ public class NettyClientHandler extends SimpleChannelInboundHandler<String> {
         }
     }
 
+    /**
+     * 客户端收到消息
+     *
+     * @param ctx ChannelHandlerContext
+     * @param msg 内容
+     */
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, String msg) {
         Log.d(TAG, "receive text message " + msg);
     }
 
     /**
+     * 异常回调,默认的exceptionCaught只会打出日志，不会关掉channel
+     *
      * @param ctx   ChannelHandlerContext
      * @param cause 异常
      */
