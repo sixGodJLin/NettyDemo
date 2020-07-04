@@ -2,8 +2,9 @@ package com.jlin.nettydemo.netty.handler;
 
 import android.util.Log;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
+import com.jlin.nettydemo.netty.listener.NettyClientListener;
+import com.jlin.nettydemo.netty.status.ConnectState;
+
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.IdleState;
@@ -17,20 +18,20 @@ import io.netty.handler.timeout.IdleStateEvent;
 public class NettyClientHandler extends SimpleChannelInboundHandler<String> {
     private static final String TAG = "NettyClientHandler";
 
-    private Object heartBeatData;
     private boolean isHeartBeatOpen;
+    private NettyClientListener nettyClientListener;
 
-    public NettyClientHandler(boolean isHeartBeatOpen, Object heartBeatData) {
+    public NettyClientHandler(boolean isHeartBeatOpen, NettyClientListener listener) {
         this.isHeartBeatOpen = isHeartBeatOpen;
-        this.heartBeatData = heartBeatData;
+        this.nettyClientListener = listener;
     }
 
     /**
      * 连接成功触发channelActive
      */
     @Override
-    public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        Log.d(TAG, "channelActive: 连接成功");
+    public void channelActive(ChannelHandlerContext ctx) {
+        nettyClientListener.onClientStatusConnectChanged(ConnectState.STATUS_CONNECT_SUCCESS);
     }
 
     /**
@@ -39,7 +40,7 @@ public class NettyClientHandler extends SimpleChannelInboundHandler<String> {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         super.channelInactive(ctx);
-        Log.e(TAG, "channelInactive: 断开连接");
+        nettyClientListener.onClientStatusConnectChanged(ConnectState.STATUS_CONNECT_CLOSED);
     }
 
     /**
@@ -55,15 +56,10 @@ public class NettyClientHandler extends SimpleChannelInboundHandler<String> {
         if (evt instanceof IdleStateEvent) {
             IdleStateEvent event = (IdleStateEvent) evt;
             if (event.state() == IdleState.WRITER_IDLE) {   //发送心跳
-                if (isHeartBeatOpen && heartBeatData != null) {
-                    if (heartBeatData instanceof String) {
-                        ctx.channel().writeAndFlush(heartBeatData);
-                    } else if (heartBeatData instanceof byte[]) {
-                        ByteBuf buf = Unpooled.copiedBuffer((byte[]) heartBeatData);
-                        ctx.channel().writeAndFlush(buf);
-                    } else {
-                        Log.e(TAG, "数据类型有误");
-                    }
+                if (isHeartBeatOpen) {
+                    String heartBeat = getHeartBeat();
+                    Log.d(TAG, "发送心跳包 ----> : " + heartBeat);
+                    ctx.channel().writeAndFlush(heartBeat + System.getProperty("line.separator"));
                 } else {
                     Log.e(TAG, "不发送心跳");
                 }
@@ -80,6 +76,7 @@ public class NettyClientHandler extends SimpleChannelInboundHandler<String> {
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, String msg) {
         Log.d(TAG, "receive text message " + msg);
+        nettyClientListener.onMessageResponseClient(msg);
     }
 
     /**
@@ -90,8 +87,15 @@ public class NettyClientHandler extends SimpleChannelInboundHandler<String> {
      */
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        Log.e(TAG, "exceptionCaught");
+        nettyClientListener.onClientStatusConnectChanged(ConnectState.STATUS_CONNECT_ERROR);
         cause.printStackTrace();
         ctx.close();
+    }
+
+    /**
+     * @return heartBeat
+     */
+    private String getHeartBeat() {
+        return "heartBeat";
     }
 }

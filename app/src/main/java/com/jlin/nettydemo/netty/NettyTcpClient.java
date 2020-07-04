@@ -6,6 +6,7 @@ import android.util.Log;
 
 import com.jlin.nettydemo.netty.handler.NettyClientHandler;
 import com.jlin.nettydemo.netty.listener.MessageStateListener;
+import com.jlin.nettydemo.netty.listener.NettyClientListener;
 
 import java.net.InetSocketAddress;
 
@@ -70,14 +71,14 @@ public class NettyTcpClient {
     private boolean isHeartBeatOpen = false;
 
     /**
-     * 心跳数据，可以是String类型，也可以是byte[].
-     */
-    private Object heartBeatData;
-
-    /**
      * 数据间隔 默认为换行转义字符
      */
     private String packetSeparator;
+
+    /**
+     * 状态和消息监听
+     */
+    private NettyClientListener nettyClientListener;
 
     private NettyTcpClient(String host, int port) {
         this.host = host;
@@ -103,20 +104,20 @@ public class NettyTcpClient {
                         pipeline.addLast(new IdleStateHandler(0, heartBeatInterval, 0));
                         pipeline.addLast(new StringEncoder(CharsetUtil.UTF_8));
                         pipeline.addLast(new StringDecoder(CharsetUtil.UTF_8));
-                        pipeline.addLast(new NettyClientHandler(isHeartBeatOpen, heartBeatData));
+//                        pipeline.addLast("encoder", new NettyEncoder());
+//                        pipeline.addLast("decoder", new NettyDecoder());
+                        pipeline.addLast(new NettyClientHandler(isHeartBeatOpen, nettyClientListener));
                     }
                 })
                 .connect(new InetSocketAddress(host, port))
                 .addListener((ChannelFutureListener) future -> {
                     if (future.isSuccess()) {
                         // 连接成功
-                        Log.d(TAG, "connect: 连接成功");
                         channel = future.channel();
                         isConnect = true;
                         isConnecting = false;
                         reconnectNum = maxConnectTimes;
                     } else {
-                        Log.e(TAG, "connect failed");
                         // 这里一定要关闭，不然一直重试会引发OOM
                         isConnect = false;
                         future.channel().close();
@@ -173,7 +174,7 @@ public class NettyTcpClient {
         try {
             String separator = TextUtils.isEmpty(packetSeparator) ? System.getProperty("line.separator") : packetSeparator;
             channel.writeAndFlush(data + separator).addListener((ChannelFutureListener) future -> {
-                Log.d(TAG, "sendMsgToServer: " + future.isSuccess());
+                Log.d(TAG, "发送消息 ------- >: " + data + " ---- " + future.isSuccess());
             });
             channel.read();
         } catch (Exception e) {
@@ -181,7 +182,45 @@ public class NettyTcpClient {
         }
     }
 
+    /**
+     * 异步发送
+     *
+     * @param data     要发送的数据
+     * @param listener 发送结果回调
+     * @return 方法执行结果
+     */
+    public boolean sendMsgToServerWithNoSeparator(String data, final MessageStateListener listener) {
+        boolean flag = channel != null && isConnect;
+        if (flag) {
+            channel.writeAndFlush(data).addListener((ChannelFutureListener) channelFuture1 ->
+                    listener.isSendSuccess(channelFuture1.isSuccess()));
+        }
+        return flag;
+    }
 
+    /**
+     * 同步发送
+     *
+     * @param data 要发送的数据
+     */
+    public void sendMsgToServerWithNoSeparator(String data) {
+        try {
+            channel.writeAndFlush(data).addListener((ChannelFutureListener) future -> {
+                Log.d(TAG, "发送消息 ------- >: " + data + " ---- " + future.isSuccess());
+            });
+            channel.read();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 发送byte
+     *
+     * @param data     data
+     * @param listener listener
+     * @return flag
+     */
     public boolean sendMsgToServer(byte[] data, final MessageStateListener listener) {
         boolean flag = channel != null && isConnect;
         if (flag) {
@@ -217,6 +256,10 @@ public class NettyTcpClient {
         return str.getBytes();
     }
 
+    public void setNettyClientListener(NettyClientListener nettyClientListener) {
+        this.nettyClientListener = nettyClientListener;
+    }
+
     /**
      * 构建者，创建NettyTcpClient
      */
@@ -250,11 +293,6 @@ public class NettyTcpClient {
         private int heartBeatInterval = 5;
 
         /**
-         * 心跳数据，可以是String类型，也可以是byte[].
-         */
-        private Object heartBeatData;
-
-        /**
          * 间隔符
          */
         private String packetSeparator;
@@ -285,11 +323,6 @@ public class NettyTcpClient {
             return this;
         }
 
-        public Builder setHeartBeatData(Object heartBeatData) {
-            this.heartBeatData = heartBeatData;
-            return this;
-        }
-
         public Builder setPacketSeparator(String packetSeparator) {
             this.packetSeparator = packetSeparator;
             return this;
@@ -302,7 +335,6 @@ public class NettyTcpClient {
             nettyTcpClient.reconnectIntervalTime = this.reconnectIntervalTime;
             nettyTcpClient.heartBeatInterval = this.heartBeatInterval;
             nettyTcpClient.isHeartBeatOpen = this.isHeartBeatOpen;
-            nettyTcpClient.heartBeatData = this.heartBeatData;
             nettyTcpClient.packetSeparator = this.packetSeparator;
             return nettyTcpClient;
         }
